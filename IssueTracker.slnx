@@ -8,6 +8,10 @@
   <Folder Name="/Core/">
     <Project Path="Domain/IssueTracker.Core.csproj" />
   </Folder>
+  <Folder Name="/Docker/">
+    <File Path="docker-compose.yml" />
+    <File Path="Dockerfile" />
+  </Folder>
   <Folder Name="/Infrastructure/">
     <Project Path="Infrastructure/IssueTracker.Infrastructure.csproj" />
   </Folder>
