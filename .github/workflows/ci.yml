@@ -4,9 +4,17 @@ name: .NET Clean Architecture CI
   push:
     branches:
       - master
+    paths:
+        - 'IssueTracker/**'
+        - '*.sln'
+        - 'Dockerfile'
   pull_request:
     branches:
       - master
+    paths:
+        - 'IssueTracker/**'
+        - '*.sln'
+        - 'Dockerfile'
 jobs:
   build:
     runs-on: ubuntu-latest

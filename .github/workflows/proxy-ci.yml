@@ -32,7 +32,7 @@ jobs:
 
       - name: verify docker multi-stage build
         working-directory: ./
-        run: docker-compose build proxy
+        run: docker compose build proxy
 
   
 
