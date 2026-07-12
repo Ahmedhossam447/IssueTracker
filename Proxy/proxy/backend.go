@@ -1,10 +1,13 @@
 package proxy
 
 import (
+	"log"
+	"net"
 	"net/http/httputil"
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Backend struct {
@@ -52,4 +55,26 @@ func (s *ServerPool) GetNextPeer() *Backend {
 		}
 	}
 	return nil
+}
+
+func pingBackend(u *url.URL) bool {
+	timeout := 2 * time.Second
+	conn, err := net.DialTimeout("tcp", u.Host, timeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func (s *ServerPool) HealthCheck() {
+	for _, b := range s.backends {
+		alive := pingBackend(b.URL)
+		b.SetAlive(alive)
+		status := "up"
+		if !alive {
+			status = "down"
+		}
+		log.Printf("Backend %s is %s", b.URL.String(), status)
+	}
 }

@@ -18,10 +18,20 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=db;Database=IssueTrackerDb;Username=postgres;Password=Password123!
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     depends_on:
       - db
+  proxy:
+    build:
+      context: ./Proxy
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+        - BACKEND_URL=http://api:8080
+    depends_on:
+      - api
 
 
 volumes:

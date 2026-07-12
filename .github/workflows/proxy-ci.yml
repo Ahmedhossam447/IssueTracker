@@ -1,0 +1,39 @@
+name: Go Proxy CI
+
+on :
+  push:
+    branches:
+      - master
+    paths:
+     - 'Proxy/**'
+     - 'docker-compose.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'Proxy/**'
+      - 'docker-compose.yml'
+jobs:
+ build-and-test:
+    runs-on: ubuntu-latest
+    steps: 
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: Proxy/go.sum
+
+      - name: verify code compile
+        working-directory: ./Proxy
+        run: |
+          go mod download || true
+          go build -o proxy-engine main.go
+
+      - name: verify docker multi-stage build
+        working-directory: ./
+        run: docker-compose build proxy
+
+  
+
+  

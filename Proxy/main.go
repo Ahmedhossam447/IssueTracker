@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"time"
 	"fmt"
 	"issuetrackerproxy/proxy"
 	"log"
@@ -21,7 +23,10 @@ func loadBalancer(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	apiServer := "http://localhost:8080"
+	apiServer := os.Getenv("BACKEND_URL")
+	if apiServer == "" {
+		apiServer = "http://localhost:8080"
+	}
 	serverURL, err := url.Parse(apiServer)
 	if err != nil {
 		log.Fatal(err)
@@ -41,6 +46,13 @@ func main() {
 	fmt.Printf(" Go Reverse Proxy active on http://localhost%s\n", port)
 
 	fmt.Printf(" Routing traffic to .NET API at %s\n", apiServer)
+
+	go func() {
+		for {
+			serverPool.HealthCheck()
+			time.Sleep(10 * time.Second)
+		}
+	}()
 
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
