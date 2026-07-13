@@ -30,12 +30,21 @@ func (b *Backend) IsAlive() bool {
 }
 
 type ServerPool struct {
+	mux      sync.RWMutex
 	backends []*Backend
 	current  uint64
 }
 
-func (s *ServerPool) AddBackend(backend *Backend) {
-	s.backends = append(s.backends, backend)
+func (s *ServerPool) SetBackends(backends []*Backend) {
+	s.mux.Lock()
+	s.backends = backends
+	s.mux.Unlock()
+}
+
+func (s *ServerPool) GetBackends() []*Backend {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	return s.backends
 }
 
 func (s *ServerPool) NextIndex() int {
