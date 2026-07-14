@@ -1,6 +1,9 @@
 using IssueTracker.Core.Interfaces;
 using IssueTracker.Infrastructure.Data;
 using IssueTracker.Infrastructure.Repositories;
+using IssueTracker.Infrastructure.Identity;
+using IssueTracker.Application.Interfaces;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -18,7 +21,10 @@ public static class DependencyInjection
         // Map DbContext to AppDbContext so GenericRepository can inject it
         services.AddScoped<DbContext>(provider => provider.GetRequiredService<AppDbContext>());
 
+        // Services Configuration
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+        services.AddScoped<IIdentityService, IdentityService>();
+        services.AddScoped<ITokenService, TokenService>();
 
         return services;
     }

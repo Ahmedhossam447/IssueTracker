@@ -6,10 +6,12 @@ using IssueTracker.Application.Commands.DeleteIssue;
 using IssueTracker.Application.Queries.GetAllIssues;
 using IssueTracker.Application.Queries.GetIssueById;
 using System;
+using Microsoft.AspNetCore.Authorization;
 namespace IssueTracker.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class IssueController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -33,6 +35,7 @@ public class IssueController : ControllerBase
     }
 
     [HttpGet]
+
     public async Task<IActionResult> GetAllIssues([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
     {
         var response = await _mediator.Send(new GetAllIssuesQuery(pageNumber, pageSize));

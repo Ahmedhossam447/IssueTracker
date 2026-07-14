@@ -9,10 +9,46 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var serverPool proxy.ServerPool
+
+var jwtSecret = []byte("SuperSecretKeyThatIsAtLeast32BytesLong123!")
+
+func jwtMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/Auth") || strings.HasPrefix(r.URL.Path, "/swagger") {
+			next(w, r)
+			return
+		}
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			log.Printf("[Auth] Blocked request with MISSING token from %s", r.RemoteAddr)
+			http.Error(w, "Missing Authorization Token", http.StatusUnauthorized)
+			return
+		}
+		tokenstring := strings.TrimPrefix(authHeader, "Bearer ")
+		token, err := jwt.Parse(tokenstring, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+			}
+			return jwtSecret, nil
+		})
+		if err != nil || !token.Valid {
+			log.Printf("Invalid token from %s", r.RemoteAddr)
+			http.Error(w, "Invalid Authorization Token", http.StatusUnauthorized)
+			return
+
+		}
+		log.Printf("[Auth] Token validated successfully! Routing to .NET API...")
+		next(w, r)
+	}
+}
 
 func loadBalancer(w http.ResponseWriter, r *http.Request) {
 	peer := serverPool.GetNextPeer()
@@ -74,7 +110,7 @@ func main() {
 	port := ":8081"
 	server := http.Server{
 		Addr:    port,
-		Handler: http.HandlerFunc(loadBalancer),
+		Handler: jwtMiddleware(loadBalancer),
 	}
 	fmt.Printf(" Go Reverse Proxy active on http://localhost%s\n", port)
 	go func() {
