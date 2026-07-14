@@ -10,12 +10,49 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/time/rate"
 )
 
 var serverPool proxy.ServerPool
+
+var (
+	visitors = make(map[string]*rate.Limiter)
+	mu       sync.Mutex
+)
+
+func getVisitor(ip string) *rate.Limiter {
+	mu.Lock()
+	defer mu.Unlock()
+
+	limiter, exists := visitors[ip]
+	if !exists {
+		limiter = rate.NewLimiter(2, 30)
+		visitors[ip] = limiter
+	}
+	return limiter
+}
+
+func rateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			log.Printf("Error parsing IP from RemoteAddr: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		limiter := getVisitor(ip)
+		if !limiter.Allow() {
+			log.Printf("Rate limit exceeded for IP: %s", ip)
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		next(w, r)
+	}
+}
 
 var jwtSecret = []byte("SuperSecretKeyThatIsAtLeast32BytesLong123!")
 
@@ -110,7 +147,7 @@ func main() {
 	port := ":8081"
 	server := http.Server{
 		Addr:    port,
-		Handler: jwtMiddleware(loadBalancer),
+		Handler: rateLimitMiddleware(jwtMiddleware(loadBalancer)),
 	}
 	fmt.Printf(" Go Reverse Proxy active on http://localhost%s\n", port)
 	go func() {
