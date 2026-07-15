@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+option csharp_namespace = "IssueTracker.API.Protos";
+
+option go_package = "./activitypb";
+
+package activity;
+
+service ActivityLogger {
+  rpc LogActivity (ActivityRequest) returns (ActivityResponse);
+}
+// 2. The Request Payload (The data .NET will send to Go)
+message ActivityRequest {
+  string issue_id = 1;     
+  string action = 2;        
+  string user_email = 3;    
+  string timestamp = 4;    
+}
+// 3. The Response Payload (The data Go will return to .NET)
+message ActivityResponse {
+  bool success = 1;
+  string message = 2;
+}

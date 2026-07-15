@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Identity;
 using IssueTracker.Infrastructure.Identity;
 using IssueTracker.Infrastructure.Data;
 using Serilog;
+using IssueTracker.API.Protos;
+
 
 namespace IssueTracker
 {
@@ -24,6 +26,11 @@ namespace IssueTracker
             // Add services to the container.
             builder.Services.AddApplication();
             builder.Services.AddInfrastructure(builder.Configuration);
+            var grpcAddress = builder.Configuration["GrpcSettings:NotificationServiceUrl"] ?? "http://localhost:50051";
+            builder.Services.AddGrpcClient<ActivityLogger.ActivityLoggerClient>(o =>
+            {
+                o.Address = new Uri(grpcAddress);
+            });
 
             // Register Identity Configuration here because it requires the Web SDK
             builder.Services.AddIdentity<ApplicationUser, IdentityRole>()

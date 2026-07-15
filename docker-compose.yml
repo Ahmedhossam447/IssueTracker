@@ -18,6 +18,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=db;Database=IssueTrackerDb;Username=postgres;Password=Password123!
+      - GrpcSettings__NotificationServiceUrl=http://notifications:50051
     expose:
       - "8080"
     depends_on:
@@ -36,9 +37,25 @@ services:
     depends_on:
       - api
 
+  notifications:
+    build:
+      context: ./NotificationService
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+  mongo:
+    image: mongo:latest
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=AdminPassword123!
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
 
 
 
 
 volumes:
   postgres_data:
+  mongo_data:

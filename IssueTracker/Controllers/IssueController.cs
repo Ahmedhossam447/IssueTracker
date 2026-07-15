@@ -5,9 +5,10 @@ using IssueTracker.Application.Commands.UpdateIssue;
 using IssueTracker.Application.Commands.DeleteIssue;
 using IssueTracker.Application.Queries.GetAllIssues;
 using IssueTracker.Application.Queries.GetIssueById;
-using System;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 namespace IssueTracker.Controllers;
+using IssueTracker.API.Protos;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -15,10 +16,12 @@ namespace IssueTracker.Controllers;
 public class IssueController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly ActivityLogger.ActivityLoggerClient _activityClient; 
 
-    public IssueController(IMediator mediator)
+    public IssueController(IMediator mediator, ActivityLogger.ActivityLoggerClient activityClient)
     {
         _mediator = mediator;
+        _activityClient = activityClient;
     }
 
     [HttpPost]
@@ -64,7 +67,31 @@ public class IssueController : ControllerBase
         }
 
         var response = await _mediator.Send(command);
+        if (response.Succeeded)
+        {
+            try
+            {
+                var userEmail = User.FindFirstValue(ClaimTypes.Email) 
+                ?? User.FindFirstValue("email") 
+                ?? "Anonymous";
+                
+                await _activityClient.LogActivityAsync(new ActivityRequest
+                {
+                    IssueId = id.ToString(),
+                    Action = "Updated",
+                    Timestamp = DateTime.UtcNow.ToString("o"),
+                    UserEmail = userEmail
+
+                });
+            }
+            catch (Exception ex)
+            {
+                // Log the exception or handle it as needed
+                Console.WriteLine($"Failed to log activity: {ex.Message}");
+        }
         return Ok(response);
+    }
+    return BadRequest(response);
     }
 
     [HttpDelete("{id}")]
@@ -74,3 +101,4 @@ public class IssueController : ControllerBase
         return Ok(response);
     }
 }
+
