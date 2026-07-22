@@ -41,8 +41,12 @@ services:
     build:
       context: ./NotificationService
       dockerfile: Dockerfile
+    environment:
+      - MONGO_URI=mongodb://admin:AdminPassword123!@mongo:27017
+      - REDIS_URI=redis:6379
     ports:
       - "50051:50051"
+      - "8082:8082"
   mongo:
     image: mongo:latest
     environment:
@@ -52,6 +56,10 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"    
 
 
 
