@@ -31,6 +31,6 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, Response<
             };
         }
 
-        return new Response<string>("User registered successfully");
+        return new Response<string>("User registered successfully") { Succeeded = true };
     }
 }
