@@ -1,29 +1,20 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:13
-    env_file: .env
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    deploy:
-      replicas: 1
 
   api:
     image: ahmedhossam09/issue-api
     env_file: .env
     expose:
       - "8080"
-    depends_on:
-      - db
     deploy:
       replicas: 3
       endpoint_mode: dnsrr
       update_config:
         parallelism: 1
         delay: "10s"
+    depends_on:
+      - haproxy
   proxy:
     image: ahmedhossam09/issue-proxy
     env_file: .env
@@ -70,6 +61,65 @@ services:
       - "6379:6379"
     deploy:
       replicas: 1
+  etcd1:
+    image: quay.io/coreos/etcd:v3.5.0
+    env_file: .env
+    environment:
+      - ETCD_NAME=etcd1
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd1:2380
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd1:2379
+  etcd2:
+    image: quay.io/coreos/etcd:v3.5.0
+    env_file: .env
+    environment:
+      - ETCD_NAME=etcd2
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd2:2380
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd2:2379
+  etcd3:
+    image: quay.io/coreos/etcd:v3.5.0
+    env_file: .env
+    environment:
+      - ETCD_NAME=etcd3
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd3:2380
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd3:2379
+  
+  patroni1:
+    image: ghcr.io/zalando/spilo-17:4.0-p3
+    env_file: .env
+    environment:
+      - PATRONI_NAME=patroni1
+    volumes:
+      - patroni1_data:/home/postgres/pgdata
+  patroni2:
+    image: ghcr.io/zalando/spilo-17:4.0-p3
+    env_file: .env
+    environment:
+      - PATRONI_NAME=patroni2
+    volumes:
+      - patroni2_data:/home/postgres/pgdata
+
+  patroni3:
+    image: ghcr.io/zalando/spilo-17:4.0-p3
+    env_file: .env
+    environment:
+      - PATRONI_NAME=patroni3
+    volumes:
+      - patroni3_data:/home/postgres/pgdata
+
+  haproxy:
+    image : haproxy:latest
+    volumes :
+    - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    ports :
+    - "5432:5432"
 
 volumes:
-  postgres_data:
+  patroni1_data:
+  patroni2_data:
+  patroni3_data:
