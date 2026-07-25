@@ -57,7 +57,8 @@ public class GenericRepository<T> : IGenericRepository<T> where T : class
 
     public async Task UpdateAsync(T entity)
     {
-        _dbSet.Update(entity);
+        // Entity is already tracked by EF Core from GetByIdAsync/FindAsync,
+        // so changes are detected automatically. No need to call Update().
         await _context.SaveChangesAsync();
     }
 

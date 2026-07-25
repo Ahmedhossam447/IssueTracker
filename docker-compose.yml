@@ -21,7 +21,7 @@ services:
     ports:
       - "8081:8081"
     deploy:
-      replicas: 1
+      replicas: 2
     depends_on:
       - api
 
@@ -114,10 +114,13 @@ services:
 
   haproxy:
     image : haproxy:latest
+    deploy:
+      replicas: 2
     volumes :
     - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
     ports :
     - "5432:5432"
+    - "5433:5433"
 
 volumes:
   patroni1_data:

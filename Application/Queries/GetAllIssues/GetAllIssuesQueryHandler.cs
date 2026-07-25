@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Dapper;
 using IssueTracker.Core.Entities;
 using IssueTracker.Core.Interfaces;
 using IssueTracker.Application.DTOs;
@@ -12,36 +13,28 @@ namespace IssueTracker.Application.Queries.GetAllIssues;
 
 public class GetAllIssuesQueryHandler : IRequestHandler<GetAllIssuesQuery, PagedResponse<IEnumerable<IssueDto>>>
 {
-    private readonly IGenericRepository<Issue> _repository;
+    private readonly ISqlConnectionFactory _sqlConnectionFactory;
 
-    public GetAllIssuesQueryHandler(IGenericRepository<Issue> repository)
+    public GetAllIssuesQueryHandler(ISqlConnectionFactory sqlConnectionFactory)
     {
-        _repository = repository;
+        _sqlConnectionFactory = sqlConnectionFactory;
     }
 
     public async Task<PagedResponse<IEnumerable<IssueDto>>> Handle(GetAllIssuesQuery request, CancellationToken cancellationToken)
     {
-        var result = await _repository.GetPagedAsync(
-            request.PageNumber, 
-            request.PageSize,
-            orderBy: q => q.OrderByDescending(i => i.CreatedAt));
-        
-        var issueDtos = result.Items.Select(i => new IssueDto
-        {
-            Id = i.Id,
-            Title = i.Title,
-            Description = i.Description,
-            Status = i.Status,
-            Priority = i.Priority,
-            CreatedAt = i.CreatedAt,
-            UpdatedAt = i.UpdatedAt
-        }).ToList();
-
+        var sql = @"
+    SELECT COUNT(*) as TotalCount FROM ""Issues"";
+    SELECT * FROM ""Issues"" LIMIT @PageSize OFFSET @Offset";
+        int offset = (request.PageNumber - 1) * request.PageSize;
+        using var connection = _sqlConnectionFactory.GetConnection();
+        var result = await connection.QueryMultipleAsync(sql, new { PageSize = request.PageSize, Offset = offset });
+        var totalCount =await result.ReadFirstAsync<int>();
+        var issues = await result.ReadAsync<IssueDto>();
         return new PagedResponse<IEnumerable<IssueDto>>(
-            issueDtos, 
+            issues, 
             request.PageNumber, 
             request.PageSize, 
-            result.TotalCount, 
+            totalCount, 
             "Issues retrieved successfully.");
     }
 }

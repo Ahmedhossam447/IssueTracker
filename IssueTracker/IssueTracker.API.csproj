@@ -30,8 +30,4 @@
     <ProjectReference Include="..\Infrastructure\IssueTracker.Infrastructure.csproj" />
   </ItemGroup>
 
-    <ItemGroup>
-    <Protobuf Include="..\Protos\activity.proto" GrpcServices="Client" />
-  </ItemGroup>
-
 </Project>

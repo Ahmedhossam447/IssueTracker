@@ -27,6 +27,8 @@ namespace IssueTracker
             // Add services to the container.
             builder.Services.AddApplication();
             builder.Services.AddInfrastructure(builder.Configuration);
+            builder.Services.AddHttpContextAccessor();
+            builder.Services.AddScoped<IssueTracker.Application.Interfaces.ICurrentUserService, IssueTracker.API.Services.CurrentUserService>();
             var grpcAddress = builder.Configuration["GrpcSettings:NotificationServiceUrl"] ?? "http://localhost:50051";
             builder.Services.AddGrpcClient<ActivityLogger.ActivityLoggerClient>(o =>
             {
