@@ -10,6 +10,8 @@ using IssueTracker.Infrastructure.Identity;
 using IssueTracker.Infrastructure.Data;
 using Serilog;
 using IssueTracker.API.Protos;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 
 namespace IssueTracker
@@ -36,6 +38,17 @@ namespace IssueTracker
             });
 
             builder.Services.AddOpenTelemetry()
+                .ConfigureResource(res => res.AddService("IssueTracker-API"))
+                .WithTracing(tracing =>
+                {
+                    tracing.AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddEntityFrameworkCoreInstrumentation()
+        .AddOtlpExporter(options =>
+        {
+            options.Endpoint = new Uri("http://jaeger:4317");
+        });
+                });
 
             // Register Identity Configuration here because it requires the Web SDK
             builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
