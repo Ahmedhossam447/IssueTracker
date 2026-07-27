@@ -88,7 +88,7 @@ services:
       - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
       - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
       - ETCD_ADVERTISE_CLIENT_URLS=http://etcd3:2379
-  
+
   patroni1:
     image: ghcr.io/zalando/spilo-17:4.0-p3
     env_file: .env
@@ -113,29 +113,33 @@ services:
       - patroni3_data:/home/postgres/pgdata
 
   haproxy:
-    image : haproxy:latest
+    image: haproxy:latest
     deploy:
       replicas: 2
-    volumes :
-    - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
-    ports :
-    - "5432:5432"
-    - "5433:5433"
-  watchtower:
-    image : containrrr/watchtower
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    ports:
+      - "5432:5432"
+      - "5433:5433"
+  shepherd:
+    image: mazzolino/shepherd
     env_file: .env
-    volumes :
-    - /var/run/docker.sock:/var/run/docker.sock
-    command : --interval 60 --cleanup
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - SLEEP_TIME=60
     deploy:
-     replicas: 1
-     placement:
-       constraints:
-       - node.role == manager
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686"   
+      - "16686:16686"
       - "4317:4317"
 
 volumes:
