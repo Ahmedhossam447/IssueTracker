@@ -10,6 +10,8 @@ services:
     deploy:
       replicas: 3
       endpoint_mode: dnsrr
+      labels:
+        - "shepherd.enable=true"
       update_config:
         parallelism: 1
         delay: "10s"
@@ -22,6 +24,8 @@ services:
       - "8081:8081"
     deploy:
       replicas: 2
+      labels:
+        - "shepherd.enable=true"
     depends_on:
       - api
 
@@ -33,6 +37,8 @@ services:
       - "8082:8082"
     deploy:
       replicas: 2
+      labels:
+        - "shepherd.enable=true"
       update_config:
         parallelism: 1
         delay: "5s"
@@ -131,6 +137,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - SLEEP_TIME=60
+      - WITH_REGISTRY_AUTH=true
+      - FILTER_SERVICES=label=shepherd.enable=true
     deploy:
       replicas: 1
       placement:

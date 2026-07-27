@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ namespace IssueTracker.Infrastructure.Services;
 
 public class OutboxProcessorService : BackgroundService
 {
+    private static readonly ActivitySource ActivitySource = new("IssueTracker.OutboxProcessor");
     private readonly IServiceScopeFactory serviceScopeFactory;
 
     public OutboxProcessorService(IServiceScopeFactory serviceScopeFactory)
@@ -45,6 +47,10 @@ public class OutboxProcessorService : BackgroundService
                             var issueId = root.GetProperty("IssueId").ToString();
                             var action = root.GetProperty("Action").GetString() ?? "Updated";
                             var userEmail = root.TryGetProperty("UserEmail", out var emailProp) ? emailProp.GetString() : "System / Anonymous";
+
+                            using var activity = ActivitySource.StartActivity("Outbox.LogActivity", ActivityKind.Client);
+                            activity?.SetTag("issue.id", issueId);
+                            activity?.SetTag("issue.action", action);
 
                             await logger.LogActivityAsync(new ActivityRequest
                             {

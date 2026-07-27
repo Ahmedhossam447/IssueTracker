@@ -43,7 +43,10 @@ namespace IssueTracker
                 {
                     tracing.AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
+        .AddGrpcClientInstrumentation()
         .AddEntityFrameworkCoreInstrumentation()
+        .AddSource("Grpc.Net.Client")
+        .AddSource("IssueTracker.OutboxProcessor")
         .AddOtlpExporter(options =>
         {
             options.Endpoint = new Uri("http://jaeger:4317");

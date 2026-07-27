@@ -50,6 +50,8 @@ jobs:
         file: ./Dockerfile
         push: true 
         tags: ahmedhossam09/issue-api:latest
+        provenance: false
+        outputs: type=registry,oci-mediatypes=false
         cache-from: type=gha
         cache-to: type=gha,mode=max
         
@@ -85,6 +87,8 @@ jobs:
           file: ./Proxy/Dockerfile
           push: true 
           tags: ahmedhossam09/issue-proxy:latest
+          provenance: false
+          outputs: type=registry,oci-mediatypes=false
           cache-from: type=gha
           cache-to: type=gha,mode=max
   build-and-push-notifications:
@@ -116,6 +120,8 @@ jobs:
           file: ./NotificationService/Dockerfile
           push: true 
           tags: ahmedhossam09/issue-notifications:latest
+          provenance: false
+          outputs: type=registry,oci-mediatypes=false
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
