@@ -13,6 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
@@ -126,8 +134,38 @@ func startRedisSubscribe(rdb *redis.Client) {
 		clientsMutex.Unlock()
 	}
 }
+func initTracer(serviceName, collectorAddr string) (*sdktrace.TracerProvider, error) {
+	ctx := context.Background()
+	exporter, err := otlptracegrpc.New(ctx, 
+		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpoint(collectorAddr),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	res,err := resource.New(ctx,
+	resource.WithAttributes(semconv.ServiceNameKey.String(serviceName)))
+	if err != nil {
+		return nil, err
+	}
+	tprovider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter),
+sdktrace.WithResource(res))
+ otel.SetTracerProvider(tprovider)
+ otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{},propagation.Baggage{}))
+	return tprovider, nil 
+}
 
 func main() {
+    tp, err := initTracer("IssueTracker-NotificationService", "jaeger:4317")
+    if err != nil {
+        log.Fatalf("Failed to initialize tracer: %v", err)
+    }
+    defer func() {
+        if err := tp.Shutdown(context.Background()); err != nil {
+            log.Printf("Error shutting down tracer: %v", err)
+        }
+    }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -168,7 +206,9 @@ func main() {
 	}
 	fmt.Printf("Go gRPC Notification Service running on port 50051...\n")
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	)
 	activitypb.RegisterActivityLoggerServer(s, &server{
 		collection:  collection,
 		redisClient: RedisClient,

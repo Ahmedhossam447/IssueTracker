@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"issuetrackerproxy/proxy"
 	"log"
@@ -14,6 +15,13 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"golang.org/x/time/rate"
 )
 
@@ -23,6 +31,28 @@ var (
 	visitors = make(map[string]*rate.Limiter)
 	mu       sync.Mutex
 )
+
+func initTracer(serviceName, collectorAddr string) (*sdktrace.TracerProvider, error) {
+	ctx := context.Background()
+	exporter, err := otlptracegrpc.New(ctx, 
+		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpoint(collectorAddr),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	res,err := resource.New(ctx,
+	resource.WithAttributes(semconv.ServiceNameKey.String(serviceName)))
+	if err != nil {
+		return nil, err
+	}
+	tprovider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter),
+sdktrace.WithResource(res))
+ otel.SetTracerProvider(tprovider)
+ otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{},propagation.Baggage{}))
+	return tprovider, nil 
+}
 
 func getVisitor(ip string) *rate.Limiter {
 	mu.Lock()
@@ -117,6 +147,7 @@ func dnsDiscovery(Hostname, port string) {
 					} else {
 						serverURL, _ := url.Parse(fmt.Sprintf("http://%s", hostAndPort))
 						proxyengine := httputil.NewSingleHostReverseProxy(serverURL)
+						proxyengine.Transport = otelhttp.NewTransport(http.DefaultTransport)
 						backend := &proxy.Backend{
 							URL:          serverURL,
 							Alive:        true,
@@ -133,6 +164,15 @@ func dnsDiscovery(Hostname, port string) {
 }
 
 func main() {
+	    tp, err := initTracer("IssueTracker-Proxy", "jaeger:4317")
+    if err != nil {
+        log.Fatalf("Failed to initialize tracer: %v", err)
+    }
+    defer func() {
+        if err := tp.Shutdown(context.Background()); err != nil {
+            log.Printf("Error shutting down tracer: %v", err)
+        }
+    }()
 	apiHostname := os.Getenv("API_HOSTNAME")
 	if apiHostname == "" {
 		apiHostname = "api"
@@ -147,7 +187,7 @@ func main() {
 	port := ":8081"
 	server := http.Server{
 		Addr:    port,
-		Handler: rateLimitMiddleware(jwtMiddleware(loadBalancer)),
+		Handler:otelhttp.NewHandler( rateLimitMiddleware(jwtMiddleware(loadBalancer)),"Go-Reverse-proxy"),
 	}
 	fmt.Printf(" Go Reverse Proxy active on http://localhost%s\n", port)
 	go func() {

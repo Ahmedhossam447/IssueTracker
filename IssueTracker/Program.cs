@@ -35,6 +35,8 @@ namespace IssueTracker
                 o.Address = new Uri(grpcAddress);
             });
 
+            builder.Services.AddOpenTelemetry()
+
             // Register Identity Configuration here because it requires the Web SDK
             builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
                 .AddEntityFrameworkStores<AppDbContext>()

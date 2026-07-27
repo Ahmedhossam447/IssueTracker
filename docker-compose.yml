@@ -123,6 +123,7 @@ services:
     - "5433:5433"
   watchtower:
     image : containrrr/watchtower
+    env_file: .env
     volumes :
     - /var/run/docker.sock:/var/run/docker.sock
     command : --interval 60 --cleanup
@@ -131,6 +132,11 @@ services:
      placement:
        constraints:
        - node.role == manager
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"   
+      - "4317:4317"
 
 volumes:
   patroni1_data:
