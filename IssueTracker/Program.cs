@@ -12,6 +12,7 @@ using Serilog;
 using IssueTracker.API.Protos;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Npgsql;
 
 
 namespace IssueTracker
@@ -45,6 +46,7 @@ namespace IssueTracker
         .AddHttpClientInstrumentation()
         .AddGrpcClientInstrumentation()
         .AddEntityFrameworkCoreInstrumentation()
+        .AddNpgsql()
         .AddSource("Grpc.Net.Client")
         .AddSource("IssueTracker.OutboxProcessor")
         .AddOtlpExporter(options =>
