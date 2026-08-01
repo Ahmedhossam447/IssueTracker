@@ -1,6 +1,5 @@
 #  Issue Tracker Architecture
 
-> # Project Status: Active Development
 
 ##  The Tech Stack
 
@@ -178,7 +177,19 @@ Across both `.NET Core` and `Go` containers in Docker Swarm, performance testing
 
   ![Jaeger Cache Hit](docs/images/jaeger-cache-hit.png)
 
-### 3. Edge Gateway Resilience (Load Testing)
+### 3. The "Thundering Herd" (100% Cache Miss Validation)
+To validate the Cache-Aside architecture, the system was subjected to a load test generating completely random cursors, guaranteeing a **100% Cache Miss rate**:
+* **The Result:** The system gracefully fell back to PostgreSQL, completing 100% of requests without crashing.
+* **The Metrics:** Because every request executed heavy B-Tree index scans and attempted redundant writes back to Redis concurrently, the throughput dropped to **~101 Requests Per Second** at an average latency of **~968 ms**.
+* **The Conclusion:** This perfectly validates the value of the Redis caching tier. The system operates roughly **40x faster** when serving traffic from memory compared to executing raw database lookups under heavy contention.
+
+### 4. Distributed Locking & Cache Penetration (The Null Object Pattern)
+To prevent the "Thundering Herd" bottleneck, a **Distributed Cache Stampede Lock** (`LockTakeAsync`) was implemented so that only one thread queries PostgreSQL per cursor. However, load testing revealed a critical edge case:
+* **The Cache Penetration Trap:** When querying cursors that contained zero records, the empty result was never cached. The lock forced 100 concurrent connections to queue up sequentially, resulting in a catastrophic drop to **5 RPS** and **16.8 seconds** of latency.
+* **The Solution (Negative Caching):** We implemented the Null Object Pattern. If the database returns 0 records, the cache service writes a temporary `Issues:Empty:{Cursor}` marker to Redis with a 30-second TTL.
+* **The Final Benchmark:** With Negative Caching enabled, the test exploded to **1,390 Requests Per Second** at an average latency of **70ms** (with a minimum of **2ms** for cached empty hits), successfully proving the system is immune to both Thundering Herds and Cache Penetration attacks.
+
+### 5. Edge Gateway Resilience (Load Testing)
 To evaluate the limits of the Swarm network and the API, the gateway was load-tested using **Bombardier** (100 concurrent connections for 10 seconds).
 * **The Traffic:** Generating sustained, aggressive traffic against the `GET /api/issue/feed` endpoint.
 * **The Result:** The Go Edge Proxy successfully intercepted the traffic, engaged its rate limiter, and rejected the excess requests with `429 Too Many Requests`.
@@ -195,6 +206,13 @@ This ecosystem is orchestrated using Docker Swarm.
 * **Automatic Migrations:** The .NET API automatically applies EF Core database migrations on startup (`db.Database.Migrate()`).
 * **Security:** Environment variables and database credentials are fully abstracted away from the YAML blueprints.
 * **Network Isolation:** All internal communication runs over encrypted Docker overlay networks. Only the Edge Proxy and WebSockets are exposed to the outside world.
+
+### Architectural Decision: Single Node Redis
+During High Availability testing, we discovered that Docker Swarm's ephemeral DNS handling (which returns `NXDOMAIN` during container task transitions) fundamentally breaks Redis Sentinel's consensus algorithm, causing it to enter `#tilt mode` rather than failing over. 
+
+While migrating to **Redis Cluster** would solve this by bypassing Swarm DNS, Redis Cluster strictly requires a 6-node minimum architecture (3 Masters, 3 Replicas) which is a massive overkill for this application's current needs.
+
+Therefore, we rely on Docker Swarm's native container auto-restarts to handle Redis node failures, and our C# `Soft SPOF Fallback` (try/catch blocks) to keep the API completely alive and functional while Swarm restarts the cache.
 
 ## Getting Started
 

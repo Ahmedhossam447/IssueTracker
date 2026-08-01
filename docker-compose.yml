@@ -154,3 +154,8 @@ volumes:
   patroni1_data:
   patroni2_data:
   patroni3_data:
+
+networks:
+  default:
+    driver: overlay
+    attachable: true
