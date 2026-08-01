@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace IssueTracker.Infrastructure;
 
@@ -27,7 +28,11 @@ public static class DependencyInjection
 
         services.AddScoped<DbContext>(provider => provider.GetRequiredService<AppDbContext>());
         services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
-
+        services.AddSingleton<IConnectionMultiplexer>(sp =>
+        {
+            return ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis"));
+        });
+        services.AddSingleton<ICursorCacheService, RedisCursorCacheService>();
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IIdentityService, IdentityService>();

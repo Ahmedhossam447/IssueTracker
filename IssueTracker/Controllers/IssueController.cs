@@ -9,6 +9,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 namespace IssueTracker.Controllers;
 using IssueTracker.API.Protos;
+using IssueTracker.Application.Queries.GetIssuesCursor;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -98,6 +99,13 @@ public class IssueController : ControllerBase
     public async Task<IActionResult> DeleteIssue(Guid id)
     {
         var response = await _mediator.Send(new DeleteIssueCommand(id));
+        return Ok(response);
+    }
+
+    [HttpGet("feed")]
+    public async Task<IActionResult> GetFeed([FromQuery] long? cursor, [FromQuery] int pageSize = 10)
+    {
+        var response = await _mediator.Send(new GetIssuesCursorQuery(cursor, pageSize));
         return Ok(response);
     }
 }
