@@ -11,5 +11,6 @@ namespace IssueTracker.Application.Interfaces
 
         Task<(IEnumerable<IssueDto> Issues, long? NextCursor)> GetIssueByCursorAsync(int PageSize, long? TimeStamp, Func<Task<IEnumerable<Issue>>> dbFallbackQuery);
         Task<bool> AddOrUpdateIssueAsync(Issue issue);
+        Task<IssueDto?> GetIssueByIdAsync(Guid issueId);
     }
 }

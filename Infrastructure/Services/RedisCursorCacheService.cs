@@ -46,6 +46,26 @@ namespace IssueTracker.Infrastructure.Services
             }
         }
 
+        public async Task<IssueDto?> GetIssueByIdAsync(Guid issueId)
+        {
+            try
+            {
+                var db = _connectionMultiplexer.GetDatabase();
+                var cachedJson = await db.StringGetAsync($"Issue:{issueId}");
+                
+                if (cachedJson.HasValue)
+                {
+                    return JsonSerializer.Deserialize<IssueDto>(cachedJson.ToString());
+                }
+                return null;
+            }
+            catch (RedisException)
+            {
+                // Soft SPOF
+                return null;
+            }
+        }
+
         public async Task<(IEnumerable<IssueDto> Issues, long? NextCursor)> GetIssueByCursorAsync(int PageSize, long? TimeStamp, Func<Task<IEnumerable<Issue>>> dbFallbackQuery)
         {
             try

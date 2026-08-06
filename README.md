@@ -195,6 +195,14 @@ To evaluate the limits of the Swarm network and the API, the gateway was load-te
 * **The Result:** The Go Edge Proxy successfully intercepted the traffic, engaged its rate limiter, and rejected the excess requests with `429 Too Many Requests`.
 * **The Metrics:** During the test, the Gateway evaluated and blocked over **47,500 requests** while maintaining a throughput of **~4,773 Requests Per Second (RPS)** at an average latency of **~21 ms**, proving the internal backend services are heavily protected against Layer 7 DDoS attacks.
 
+### 6. Solving the "Read-Your-Own-Writes" Dilemma
+In a distributed CQRS system with asynchronous PostgreSQL replication, users are vulnerable to the "Read-Your-Own-Writes" lag: querying a Read Replica mere milliseconds after writing to the Primary Leader often results in a `404 Not Found`.
+
+We implemented a **multi-layered fallback architecture** to completely eliminate this without sacrificing performance:
+1. **Cache-Aside (Primary Route):** The system instantly writes new issues to the Redis Cache. Reads bypass the database entirely and fetch the JSON directly from Redis.
+2. **Soft SPOF Fallback:** If Redis crashes, a `try/catch` block intercepts the `RedisException` and gracefully degrades to querying the PostgreSQL Read Replica over Port 5433.
+3. **Sticky Routing (The Ultimate Fallback):** If Redis crashes *and* the user just wrote data (passing the `X-Recent-Write: true` HTTP header), the system dynamically routes the Dapper query around the replication lag by querying the Primary Leader on Port 5432 directly.
+
 ---
 
 ## Infrastructure & DevOps

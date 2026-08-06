@@ -49,7 +49,11 @@ public class IssueController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetIssueById(Guid id)
     {
-        var response = await _mediator.Send(new GetIssueByIdQuery(id));
+        bool useLeaderConnection;
+        if (Request.Headers.ContainsKey("X-Recent-Write")) useLeaderConnection = true;
+        else useLeaderConnection = false;
+
+        var response = await _mediator.Send(new GetIssueByIdQuery(id) { useLeaderConnection = useLeaderConnection });
         
         if (!response.Succeeded)
         {
@@ -87,7 +91,6 @@ public class IssueController : ControllerBase
             }
             catch (Exception ex)
             {
-                // Log the exception or handle it as needed
                 Console.WriteLine($"Failed to log activity: {ex.Message}");
         }
         return Ok(response);

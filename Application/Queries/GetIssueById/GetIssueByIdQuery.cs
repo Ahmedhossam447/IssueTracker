@@ -5,4 +5,4 @@ using IssueTracker.Application.Responses;
 
 namespace IssueTracker.Application.Queries.GetIssueById;
 
-public record GetIssueByIdQuery(Guid Id) : IRequest<Response<IssueDto>>;
+public record GetIssueByIdQuery(Guid Id, bool useLeaderConnection = false) : IRequest<Response<IssueDto>>;
