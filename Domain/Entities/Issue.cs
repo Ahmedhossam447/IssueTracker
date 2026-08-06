@@ -11,6 +11,7 @@ public class Issue
     public IssuePriority Priority { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
+    public int Version { get; private set; }
 
     protected Issue() 
     { 
@@ -26,7 +27,8 @@ public class Issue
             Description = description,
             Status = IssueStatus.Open,
             Priority = priority,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            Version = 1
         };
     }
 
@@ -34,6 +36,7 @@ public class Issue
     {
         Status = newStatus;
         UpdatedAt = DateTime.UtcNow;
+        Version++;
     }
 
     public void UpdateDetails(string title, string description, IssuePriority priority)
@@ -42,5 +45,6 @@ public class Issue
         Description = description;
         Priority = priority;
         UpdatedAt = DateTime.UtcNow;
+        Version++;
     }
 }

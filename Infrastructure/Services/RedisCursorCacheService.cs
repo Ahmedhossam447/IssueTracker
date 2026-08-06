@@ -30,6 +30,7 @@ namespace IssueTracker.Infrastructure.Services
                     Priority = issue.Priority,
                     CreatedAt = issue.CreatedAt,
                     UpdatedAt = issue.UpdatedAt,
+                    Version = issue.Version
                 };
                 var json = JsonSerializer.Serialize(issueDto);
 
@@ -115,7 +116,8 @@ namespace IssueTracker.Infrastructure.Services
                                     Status = issue.Status,
                                     Priority = issue.Priority,
                                     CreatedAt = issue.CreatedAt,
-                                    UpdatedAt = issue.UpdatedAt
+                                    UpdatedAt = issue.UpdatedAt,
+                                    Version = issue.Version
                                 });
                             }
                             
@@ -170,7 +172,8 @@ namespace IssueTracker.Infrastructure.Services
                     Status = issue.Status,
                     Priority = issue.Priority,
                     CreatedAt = issue.CreatedAt,
-                    UpdatedAt = issue.UpdatedAt
+                    UpdatedAt = issue.UpdatedAt,
+                    Version = issue.Version
                 }).ToList();
 
                 long? dbNextCursor = dtos.LastOrDefault()?.CreatedAt.Ticks;

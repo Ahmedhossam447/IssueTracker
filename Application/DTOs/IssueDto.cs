@@ -12,4 +12,5 @@ public class IssueDto
     public IssuePriority Priority { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public int Version { get; set; }
 }

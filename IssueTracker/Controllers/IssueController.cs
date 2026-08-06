@@ -53,7 +53,13 @@ public class IssueController : ControllerBase
         if (Request.Headers.ContainsKey("X-Recent-Write")) useLeaderConnection = true;
         else useLeaderConnection = false;
 
-        var response = await _mediator.Send(new GetIssueByIdQuery(id) { useLeaderConnection = useLeaderConnection });
+        int? minVersion = null;
+        if (Request.Headers.TryGetValue("X-Min-Version", out var versionStr) && int.TryParse(versionStr, out var v))
+        {
+            minVersion = v;
+        }
+
+        var response = await _mediator.Send(new GetIssueByIdQuery(id) { useLeaderConnection = useLeaderConnection, MinVersion = minVersion });
         
         if (!response.Succeeded)
         {
