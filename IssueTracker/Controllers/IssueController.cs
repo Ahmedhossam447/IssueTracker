@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 namespace IssueTracker.Controllers;
 using IssueTracker.API.Protos;
 using IssueTracker.Application.Queries.GetIssuesCursor;
+using IssueTracker.Application.Interfaces;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -18,11 +19,13 @@ public class IssueController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ActivityLogger.ActivityLoggerClient _activityClient; 
+    private readonly ICursorCacheService _cursorCacheService;
 
-    public IssueController(IMediator mediator, ActivityLogger.ActivityLoggerClient activityClient)
+    public IssueController(IMediator mediator, ActivityLogger.ActivityLoggerClient activityClient, ICursorCacheService cursorCacheService)
     {
         _mediator = mediator;
         _activityClient = activityClient;
+        _cursorCacheService = cursorCacheService;
     }
 
     [HttpPost]
@@ -57,6 +60,18 @@ public class IssueController : ControllerBase
         if (Request.Headers.TryGetValue("X-Min-Version", out var versionStr) && int.TryParse(versionStr, out var v))
         {
             minVersion = v;
+        }
+
+        var userEmail = User.FindFirstValue(ClaimTypes.Email) 
+            ?? User.FindFirstValue("email");
+
+        if (!string.IsNullOrEmpty(userEmail))
+        {
+            var serverVersion = await _cursorCacheService.GetUserLatestVersionAsync(userEmail);
+            if (serverVersion.HasValue)
+            {
+                minVersion = Math.Max(minVersion ?? 0, serverVersion.Value);
+            }
         }
 
         var response = await _mediator.Send(new GetIssueByIdQuery(id) { useLeaderConnection = useLeaderConnection, MinVersion = minVersion });

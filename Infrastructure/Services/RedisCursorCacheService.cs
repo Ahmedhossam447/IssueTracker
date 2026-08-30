@@ -180,5 +180,39 @@ namespace IssueTracker.Infrastructure.Services
                 return (dtos, dbNextCursor);
             }
         }
+
+        public async Task<bool> SetUserLatestVersionAsync(string userEmail, int version)
+        {
+            try
+            {
+                var db = _connectionMultiplexer.GetDatabase();
+                await db.StringSetAsync($"User:{userEmail}:LatestVersion", version, TimeSpan.FromSeconds(20));
+                return true;
+            }
+            catch (RedisException)
+            {
+                // Soft SPOF: If Redis is down, gracefully degrade without crashing
+                return false;
+            }
+        }
+
+        public async Task<int?> GetUserLatestVersionAsync(string userEmail)
+        {
+            try
+            {
+                var db = _connectionMultiplexer.GetDatabase();
+                var val = await db.StringGetAsync($"User:{userEmail}:LatestVersion");
+                if (val.HasValue && int.TryParse(val.ToString(), out var version))
+                {
+                    return version;
+                }
+                return null;
+            }
+            catch (RedisException)
+            {
+                // Soft SPOF
+                return null;
+            }
+        }
     }
 }

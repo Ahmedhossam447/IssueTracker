@@ -10,10 +10,16 @@ public class UpdateIssueCommandHandler : IRequestHandler<UpdateIssueCommand, Res
 {
     private readonly IGenericRepository<Issue> _repository;
     private readonly ICursorCacheService _cursorCacheService;
-    public UpdateIssueCommandHandler(IGenericRepository<Issue> repository, ICursorCacheService cursorCacheService)
+    private readonly ICurrentUserService _currentUserService;
+
+    public UpdateIssueCommandHandler(
+        IGenericRepository<Issue> repository, 
+        ICursorCacheService cursorCacheService,
+        ICurrentUserService currentUserService)
     {
         _repository = repository;
         _cursorCacheService = cursorCacheService;
+        _currentUserService = currentUserService;
     }
 
     public async Task<Response<Guid>> Handle(UpdateIssueCommand request, CancellationToken cancellationToken)
@@ -28,6 +34,12 @@ public class UpdateIssueCommandHandler : IRequestHandler<UpdateIssueCommand, Res
         
         await _repository.UpdateAsync(issue);
         await _cursorCacheService.AddOrUpdateIssueAsync(issue);
+
+        var userEmail = _currentUserService.UserEmail;
+        if (!string.IsNullOrEmpty(userEmail) && userEmail != "System / Anonymous")
+        {
+            await _cursorCacheService.SetUserLatestVersionAsync(userEmail, issue.Version);
+        }
 
         return new Response<Guid>(issue.Id, "Issue updated successfully.");
     }
