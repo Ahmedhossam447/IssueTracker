@@ -11,6 +11,7 @@ namespace IssueTracker.Controllers;
 using IssueTracker.API.Protos;
 using IssueTracker.Application.Queries.GetIssuesCursor;
 using IssueTracker.Application.Queries.SearchIssues;
+using IssueTracker.Application.Queries.ExportIssuesParquet;
 using IssueTracker.Application.Interfaces;
 
 [ApiController]
@@ -125,6 +126,19 @@ public class IssueController : ControllerBase
 
         var response = await _mediator.Send(new SearchIssuesQuery(q, pageNumber, pageSize));
         return Ok(response);
+    }
+
+    [HttpGet("export/parquet")]
+    public async Task<IActionResult> ExportParquet([FromQuery] int maxRows = 50000)
+    {
+        int clamped = Math.Clamp(maxRows, 1, 100000);
+        var result = await _mediator.Send(new ExportIssuesParquetQuery(clamped));
+
+        Response.Headers["X-Row-Count"] = result.RowCount.ToString();
+        Response.Headers["X-Raw-Json-Bytes"] = result.RawJsonBytes.ToString();
+        Response.Headers["X-Parquet-Bytes"] = result.ParquetBytes.Length.ToString();
+
+        return File(result.ParquetBytes, "application/octet-stream", "issues-export.parquet");
     }
 }
 

@@ -242,6 +242,14 @@ Beyond Patroni leader election, the 3-node `etcd` Raft cluster actively coordina
 * **Go Edge Proxy Per-Backend Circuit Breaker (`Proxy/proxy/backend.go`, `Proxy/main.go`):** Tracks HTTP `5xx` and transport failures per `.NET` replica (`Closed` $\rightarrow$ `Open` $\rightarrow$ `Half-Open`). After 3 consecutive failures, the degraded replica is skipped for 15 seconds before allowing 1 probe request.
 * **Outbox Exponential Backoff with Jitter (`OutboxProcessorService.cs`):** Trips `OPEN` after 3 consecutive gRPC failures and backs off exponentially (`6s -> 12s -> 24s -> max 30s` + random `0–1000ms` jitter). Verified live by scaling `notifications` to `0` (`6286ms -> 12583ms -> 24649ms -> 30587ms`) and recovering automatically to `CLOSED` when `notifications` + MongoDB `rs0` were restored.
 
+### 6. Priority-Based Server-Side Load Shedding (`Proxy/main.go`)
+* **Priority Classification & Grace Window:** Low-priority reads (`GET /api/Issue/search`, `/feed`, `/api/Issue`) shed at `70%` of `maxInFlight`, while writes (`POST`/`PUT`/`DELETE`) and `/api/Auth` keep `100%` capacity, with a `50ms` micro-burst grace window before returning `503 Service Unavailable` + `Retry-After: 2`.
+* **Live `etcd` Tuning & Verified Test:** Watches `/config/proxy/max_inflight` in `etcd`. Under a live burst of 25 concurrent `GET /api/Issue/search` requests with `max_inflight=2`, the proxy served **`17` `200 OK`** and shed **`8` with `503 (Retry-After: 2)`**, then hot-reloaded back to `150` with zero restarts.
+
+### 7. Columnar Apache Parquet Export *(Learning Experiment)*
+* **Architectural Note:** At 50k–220k rows, exporting to Parquet is **intentional over-engineering** (the PostgreSQL Read Replicas on Port `5433` already handle aggregations cleanly); it was implemented strictly as a hands-on DDIA Ch. 1 & Ch. 4 experiment in OLTP/OLAP separation and columnar compression.
+* **Verified Benchmark (50,000 rows sorted by `Priority, Status, CreatedAt`):** `GET /api/Issue/export/parquet` compressed **`13,717,675` bytes (raw JSON)** down to **`2,868,356` bytes (Parquet)** — **4.78x smaller (~79.1% reduction)**.
+
 ---
 
 ## Infrastructure & DevOps

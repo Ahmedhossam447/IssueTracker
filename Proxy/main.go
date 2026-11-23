@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -34,6 +35,8 @@ var (
 	mu           sync.Mutex
 	currentRPS   = 2.0
 	currentBurst = 30
+	inFlight     int64
+	maxInFlight  int64 = 150
 )
 
 func initTracer(serviceName, collectorAddr string) (*sdktrace.TracerProvider, error) {
@@ -85,6 +88,59 @@ func updateRateLimit(rps *float64, burst *int) {
 		limiter.SetBurst(currentBurst)
 	}
 	log.Printf("[etcd-Config] Hot-reloaded Token Bucket Rate Limiter: RPS=%.1f, Burst=%d", currentRPS, currentBurst)
+}
+
+func isLowPriorityRequest(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	path := r.URL.Path
+	return strings.HasPrefix(path, "/api/Issue/search") ||
+		strings.HasPrefix(path, "/api/Issue/feed") ||
+		path == "/api/Issue"
+}
+
+// DDIA Ch. 2: Priority-Based Server-Side Load Shedding with 50ms micro-burst grace window
+// and Retry-After backpressure header.
+func loadSheddingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		lowPriority := isLowPriorityRequest(r)
+		deadline := time.Now().Add(50 * time.Millisecond)
+
+		for {
+			maxCap := atomic.LoadInt64(&maxInFlight)
+			limit := maxCap
+			if lowPriority {
+				limit = int64(float64(maxCap) * 0.70)
+				if limit < 1 {
+					limit = 1
+				}
+			}
+
+			cur := atomic.LoadInt64(&inFlight)
+			if cur < limit {
+				if atomic.CompareAndSwapInt64(&inFlight, cur, cur+1) {
+					defer atomic.AddInt64(&inFlight, -1)
+					next(w, r)
+					return
+				}
+				continue
+			}
+
+			if time.Now().After(deadline) {
+				tier := "HIGH"
+				if lowPriority {
+					tier = "LOW"
+				}
+				log.Printf("[LoadShedding] Shedding %s-priority %s %s (inFlight=%d, limit=%d/%d)",
+					tier, r.Method, r.URL.Path, cur, limit, maxCap)
+				w.Header().Set("Retry-After", "2")
+				http.Error(w, "Service Unavailable - Server Overloaded", http.StatusServiceUnavailable)
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 }
 
 func rateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -242,6 +298,7 @@ func etcdWatchServices(cli *clientv3.Client) {
 func etcdWatchConfig(cli *clientv3.Client) {
 	const rpsKey = "/config/proxy/rate_limit_rps"
 	const burstKey = "/config/proxy/rate_limit_burst"
+	const maxInFlightKey = "/config/proxy/max_inflight"
 
 	applyKV := func(k, v string) {
 		if k == rpsKey {
@@ -251,6 +308,12 @@ func etcdWatchConfig(cli *clientv3.Client) {
 		} else if k == burstKey {
 			if val, err := strconv.Atoi(v); err == nil {
 				updateRateLimit(nil, &val)
+			}
+		} else if k == maxInFlightKey {
+			if val, err := strconv.ParseInt(v, 10, 64); err == nil && val > 0 {
+				atomic.StoreInt64(&maxInFlight, val)
+				log.Printf("[etcd-Config] Hot-reloaded Load Shedding maxInFlight=%d (low-priority sheds at %d)",
+					val, int64(float64(val)*0.70))
 			}
 		}
 	}
@@ -340,7 +403,7 @@ func main() {
 	port := ":8081"
 	server := http.Server{
 		Addr:    port,
-		Handler: otelhttp.NewHandler(rateLimitMiddleware(jwtMiddleware(loadBalancer)), "Go-Reverse-proxy"),
+		Handler: otelhttp.NewHandler(rateLimitMiddleware(loadSheddingMiddleware(jwtMiddleware(loadBalancer))), "Go-Reverse-proxy"),
 	}
 	fmt.Printf(" Go Reverse Proxy active on http://localhost%s\n", port)
 	go func() {
