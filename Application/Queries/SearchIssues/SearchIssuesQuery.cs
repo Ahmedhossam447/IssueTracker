@@ -1,0 +1,9 @@
+using System.Collections.Generic;
+using MediatR;
+using IssueTracker.Application.DTOs;
+using IssueTracker.Application.Responses;
+
+namespace IssueTracker.Application.Queries.SearchIssues;
+
+public record SearchIssuesQuery(string Query, int PageNumber = 1, int PageSize = 10)
+    : IRequest<PagedResponse<IEnumerable<IssueDto>>>;

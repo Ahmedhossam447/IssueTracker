@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 namespace IssueTracker.Controllers;
 using IssueTracker.API.Protos;
 using IssueTracker.Application.Queries.GetIssuesCursor;
+using IssueTracker.Application.Queries.SearchIssues;
 using IssueTracker.Application.Interfaces;
 
 [ApiController]
@@ -111,6 +112,18 @@ public class IssueController : ControllerBase
     public async Task<IActionResult> GetFeed([FromQuery] long? cursor, [FromQuery] int pageSize = 10)
     {
         var response = await _mediator.Send(new GetIssuesCursorQuery(cursor, pageSize));
+        return Ok(response);
+    }
+
+    [HttpGet("search")]
+    public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return BadRequest("Search query 'q' cannot be empty.");
+        }
+
+        var response = await _mediator.Send(new SearchIssuesQuery(q, pageNumber, pageSize));
         return Ok(response);
     }
 }

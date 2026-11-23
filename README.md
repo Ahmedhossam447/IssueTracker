@@ -231,6 +231,13 @@ Beyond Patroni leader election, the 3-node `etcd` Raft cluster actively coordina
 * **Patroni Leader 35-Second Freeze:** Freezing the PostgreSQL Leader past its 30s `etcd` lease triggered automatic failover (`TL 2 -> 3`, new Leader elected, old Leader demoted cleanly to `Replica` with `0 MB` lag) with **0 Split-Brain** and **0 Monotonic Read violations**.
 * **API Leader `SIGKILL` & Live Config Reload:** Killing the Outbox Leader (`api.1`) triggered `[etcd-Watch] DELETE` / `PUT` updates in both Go Proxy replicas and promoted `api.2` with a higher `FencingToken(ModRevision)` (`8898 -> 8935`). Live rate-limit updates (`RPS=50.0`) sustained `5 req/sec` (`200ms` interval) with **15/15 Writes OK, 15/15 Reads OK, and 0 `429`s**.
 
+### 4. Full-Text Search (PostgreSQL `GIN` Inverted Index)
+* **Architecture:** Added a `GENERATED ALWAYS AS (...) STORED` `SearchVector` (`tsvector`) column on `"Issues"` (weighting `"Title"` as `'A'` and `"Description"` as `'B'`) backed by `"IX_Issues_SearchVector_GIN"` (`USING GIN`).
+* **Read-Replica Routing:** `GET /api/Issue/search?q=...` executes `websearch_to_tsquery('english', @SearchTerm)` and `ts_rank` via Dapper on Port `5433` (Standby Read Replicas).
+* **Verified `EXPLAIN ANALYZE` Benchmark (50,004 rows):**
+  * Naive `ILIKE '%deadlock%'` (`Seq Scan`, 49,954 rows filtered): **`59.702 ms`**
+  * `GIN` Inverted Index (`Bitmap Index Scan on "IX_Issues_SearchVector_GIN"`): **`0.488 ms`** (**~122x faster**)
+
 ---
 
 ## Infrastructure & DevOps
