@@ -5,7 +5,9 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IssueTracker.Application.Exceptions;
 using IssueTracker.Application.Responses;
+using Microsoft.EntityFrameworkCore;
 
 namespace IssueTracker.Middlewares;
 
@@ -41,6 +43,13 @@ public class GlobalExceptionHandler : IExceptionHandler
             case System.UnauthorizedAccessException:
                 statusCode = StatusCodes.Status401Unauthorized;
                 response.Message = "You are not authorized to perform this action.";
+                break;
+
+            case ConcurrencyConflictException:
+            case DbUpdateConcurrencyException:
+                statusCode = StatusCodes.Status409Conflict;
+                response.Message = "The resource was modified by another request. Please refresh and try again.";
+                response.Errors = new System.Collections.Generic.List<string> { exception.Message };
                 break;
 
             default:

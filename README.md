@@ -207,6 +207,32 @@ We implemented a **multi-layered fallback architecture** to completely eliminate
 
 ---
 
+## Distributed Systems Verification & Coordination Upgrades
+
+To validate correctness under partial failures, process pauses, and unreliable networks, the system is verified using **Deterministic Simulation Testing (DST)** (`IssueTracker.SimulationTests`) and **Live Chaos Fault Injection** (`scripts/chaos-client.ps1`), alongside full **`etcd` Coordination Service** integration.
+
+### 1. Deterministic Simulation Testing (1,500 Virtual-Time Seeds)
+Using a deterministic `VirtualClock`, `Random(seed)` fault injector, and `DispatchProxy` stubs over the real production handlers (`RedisCursorCacheService`, `UpdateIssueCommandHandler`), three distributed invariants were tested and hardened:
+
+| Test Scenario | Bug Discovered (Baseline) | Fix Implemented | Verified Result |
+| :--- | :--- | :--- | :--- |
+| **Zombie Pause & Cache Stampede Lock** | **129 / 500 seeds failed:** A paused reader waking up after `UpdateIssue` overwrote Redis back to a stale `Version`. | **Atomic Redis Lua Script + Version Fencing:** `UpsertIssueLuaScript` in `RedisCursorCacheService` atomically rejects writes where `incomingVersion < currentVersion`. | **500 / 500 seeds passed** |
+| **Outbox $\rightarrow$ gRPC Network Drops** | **282 / 500 seeds failed:** Network false negatives and batch rollbacks caused duplicate MongoDB audit logs (e.g., 5 events $\rightarrow$ 15 inserts). | **Transactional Inbox + Protobuf Evolution:** Added `message_id` to `activity.proto`, enforced a unique partial index in MongoDB (`NotificationService`), and isolated per-message commits in `OutboxProcessorService`. | **500 / 500 seeds passed** |
+| **Concurrent `UpdateIssue` Edits** | **299 / 500 seeds failed:** Concurrent read-modify-write requests silently overwrote each other (**Lost Updates**). | **Optimistic Concurrency Control (First-Committer-Wins):** Added optional `ExpectedVersion` to `UpdateIssueCommand`, `.IsConcurrencyToken()` on `Issue.Version`, and `409 Conflict` mapping in `GlobalExceptionHandler`. | **500 / 500 seeds passed** |
+
+### 2. `etcd` Coordination Service Integration
+Beyond Patroni leader election, the 3-node `etcd` Raft cluster actively coordinates application services via persistent HTTP/2 gRPC streams:
+* **Outbox Leader Election & `ModRevision` Fencing Tokens:** `.NET` API replicas compete via an atomic `etcd` `TransactionAsync` (`CreateRevision == 0`) with a 10-second lease. Only the elected leader polls `OutboxMessages`, attaching `etcd`'s strictly monotonic `ModRevision` as `fencing_token` in `ActivityRequest` (enforced by `NotificationService` to reject stale zombie leaders). Standby replicas watch `/locks/outbox/leader` with zero idle database polling.
+* **Ephemeral Service Discovery (`etcd` Leases + Watches):** `.NET` API replicas register `/services/api/{ip}:8080` with a 5-second TTL lease (`EtcdServiceRegistrar`), and the Go Edge Proxy watches `/services/api/` via `clientv3.Watch` for instant `PUT`/`DELETE` backend updates.
+* **Dynamic Configuration Watches:** The Go Edge Proxy watches `/config/proxy/rate_limit_rps` and `/config/proxy/rate_limit_burst` to hot-reload its Token Bucket rate limiters across all active visitors with zero downtime.
+
+### 3. Live Chaos Testing (Docker Swarm)
+* **Redis Blackout (`docker pause` / `SIGSTOP`):** Hardened `RedisCursorCacheService` to catch both `RedisException` and `TimeoutException`, preserving **0 Monotonic Read violations** during Redis freezes.
+* **Patroni Leader 35-Second Freeze:** Freezing the PostgreSQL Leader past its 30s `etcd` lease triggered automatic failover (`TL 2 -> 3`, new Leader elected, old Leader demoted cleanly to `Replica` with `0 MB` lag) with **0 Split-Brain** and **0 Monotonic Read violations**.
+* **API Leader `SIGKILL` & Live Config Reload:** Killing the Outbox Leader (`api.1`) triggered `[etcd-Watch] DELETE` / `PUT` updates in both Go Proxy replicas and promoted `api.2` with a higher `FencingToken(ModRevision)` (`8898 -> 8935`). Live rate-limit updates (`RPS=50.0`) sustained `5 req/sec` (`200ms` interval) with **15/15 Writes OK, 15/15 Reads OK, and 0 `429`s**.
+
+---
+
 ## Infrastructure & DevOps
 
 This ecosystem is orchestrated using Docker Swarm.

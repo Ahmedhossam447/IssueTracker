@@ -34,6 +34,7 @@ public class Issue
 
     public void UpdateStatus(IssueStatus newStatus)
     {
+
         Status = newStatus;
         UpdatedAt = DateTime.UtcNow;
         Version++;

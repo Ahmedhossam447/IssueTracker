@@ -12,6 +12,18 @@ namespace IssueTracker.Infrastructure.Services
     public class RedisCursorCacheService : ICursorCacheService
     {
         IConnectionMultiplexer _connectionMultiplexer;
+
+        // Atomic Fencing-Token gatekeeper executed inside Redis's single-threaded Lua runtime.
+        // Rejects any stale/zombie write whose Version is lower than what Redis already holds.
+        private const string UpsertIssueLuaScript = @"
+            local currentVersion = tonumber(redis.call('GET', KEYS[2]) or '0')
+            if tonumber(ARGV[1]) < currentVersion then
+                return 0
+            end
+            redis.call('SET', KEYS[2], ARGV[1])
+            redis.call('SET', KEYS[1], ARGV[2])
+            redis.call('ZADD', KEYS[3], ARGV[4], ARGV[3])
+            return 1";
         
         public RedisCursorCacheService(IConnectionMultiplexer connectionMultiplexer)
         {
@@ -35,14 +47,17 @@ namespace IssueTracker.Infrastructure.Services
                 var json = JsonSerializer.Serialize(issueDto);
 
                 var db = _connectionMultiplexer.GetDatabase();
-                await db.StringSetAsync($"Issue:{issue.Id}", json);
-                await db.SortedSetAddAsync("Issues", issue.Id.ToString(), issue.CreatedAt.Ticks);
+                var result = (int)await db.ScriptEvaluateAsync(
+                    UpsertIssueLuaScript,
+                    new RedisKey[] { $"Issue:{issue.Id}", $"Issue:{issue.Id}:Version", "Issues" },
+                    new RedisValue[] { issue.Version, json, issue.Id.ToString(), issue.CreatedAt.Ticks }
+                );
 
-                return true;
+                return result == 1;
             }
-            catch (RedisException)
+            catch (Exception ex) when (ex is RedisException or TimeoutException)
             {
-                // Soft SPOF: If Redis is down, ignore the cache update and keep the app alive
+                // Soft SPOF: If Redis is down or frozen (SIGSTOP), ignore the cache update and keep the app alive
                 return false;
             }
         }
@@ -60,7 +75,7 @@ namespace IssueTracker.Infrastructure.Services
                 }
                 return null;
             }
-            catch (RedisException)
+            catch (Exception ex) when (ex is RedisException or TimeoutException)
             {
                 // Soft SPOF
                 return null;
@@ -158,9 +173,9 @@ namespace IssueTracker.Infrastructure.Services
 
                 return (issues, nextCursor);
             }
-            catch (RedisException)
+            catch (Exception ex) when (ex is RedisException or TimeoutException)
             {
-                // Soft SPOF: Redis is completely down! 
+                // Soft SPOF: Redis is completely down or frozen! 
                 // Don't crash the API, gracefully fall back to PostgreSQL directly
                 var issuesFromDb = await dbFallbackQuery();
                 
@@ -189,9 +204,9 @@ namespace IssueTracker.Infrastructure.Services
                 await db.StringSetAsync($"User:{userEmail}:LatestVersion", version, TimeSpan.FromSeconds(20));
                 return true;
             }
-            catch (RedisException)
+            catch (Exception ex) when (ex is RedisException or TimeoutException)
             {
-                // Soft SPOF: If Redis is down, gracefully degrade without crashing
+                // Soft SPOF: If Redis is down or frozen, gracefully degrade without crashing
                 return false;
             }
         }
@@ -208,7 +223,7 @@ namespace IssueTracker.Infrastructure.Services
                 }
                 return null;
             }
-            catch (RedisException)
+            catch (Exception ex) when (ex is RedisException or TimeoutException)
             {
                 // Soft SPOF
                 return null;

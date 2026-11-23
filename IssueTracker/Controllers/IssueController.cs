@@ -95,28 +95,9 @@ public class IssueController : ControllerBase
         var response = await _mediator.Send(command);
         if (response.Succeeded)
         {
-            try
-            {
-                var userEmail = User.FindFirstValue(ClaimTypes.Email) 
-                ?? User.FindFirstValue("email") 
-                ?? "Anonymous";
-                
-                await _activityClient.LogActivityAsync(new ActivityRequest
-                {
-                    IssueId = id.ToString(),
-                    Action = "Updated",
-                    Timestamp = DateTime.UtcNow.ToString("o"),
-                    UserEmail = userEmail
-
-                });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed to log activity: {ex.Message}");
+            return Ok(response);
         }
-        return Ok(response);
-    }
-    return BadRequest(response);
+        return BadRequest(response);
     }
 
     [HttpDelete("{id}")]

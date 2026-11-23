@@ -1,3 +1,4 @@
+using dotnet_etcd;
 using IssueTracker.Application.Interfaces;
 using IssueTracker.Core.Interfaces;
 using IssueTracker.Infrastructure.Data;
@@ -32,12 +33,18 @@ public static class DependencyInjection
         {
             return ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis"));
         });
+        services.AddSingleton<EtcdClient>(sp =>
+        {
+            var etcdEndpoints = configuration["Etcd:ConnectionString"] ?? "http://etcd1:2379,http://etcd2:2379,http://etcd3:2379";
+            return new EtcdClient(etcdEndpoints);
+        });
         services.AddSingleton<ICursorCacheService, RedisCursorCacheService>();
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<ITokenService, TokenService>();
         services.AddHostedService<OutboxProcessorService>();
+        services.AddHostedService<EtcdServiceRegistrar>();
         return services;
     }
 }

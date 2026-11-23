@@ -15,6 +15,8 @@ message ActivityRequest {
   string action = 2;        
   string user_email = 3;    
   string timestamp = 4;    
+  string message_id = 5;
+  int64 fencing_token = 6;
 }
 // 3. The Response Payload (The data Go will return to .NET)
 message ActivityResponse {

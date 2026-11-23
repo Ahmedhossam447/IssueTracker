@@ -27,6 +27,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -40,11 +42,28 @@ var (
 
 type server struct {
 	activitypb.UnimplementedActivityLoggerServer
-	collection  *mongo.Collection
-	redisClient *redis.Client
+	collection          *mongo.Collection
+	redisClient         *redis.Client
+	fencingMu           sync.Mutex
+	highestFencingToken int64
 }
 
 func (s *server) LogActivity(ctx context.Context, req *activitypb.ActivityRequest) (*activitypb.ActivityResponse, error) {
+	// DDIA Ch. 9/10: Fencing Token Gatekeeper
+	// Reject stale writes from a paused "zombie" Outbox leader whose etcd lease expired.
+	if req.FencingToken > 0 {
+		s.fencingMu.Lock()
+		if req.FencingToken < s.highestFencingToken {
+			highest := s.highestFencingToken
+			s.fencingMu.Unlock()
+			fmt.Printf("🛡️ Fencing Token REJECTED: stale token %d < highest seen %d\n", req.FencingToken, highest)
+			return nil, status.Errorf(codes.FailedPrecondition, "stale fencing token %d < %d", req.FencingToken, highest)
+		}
+		if req.FencingToken > s.highestFencingToken {
+			s.highestFencingToken = req.FencingToken
+		}
+		s.fencingMu.Unlock()
+	}
 
 	fmt.Printf(" Received Activity: [%s] Issue %s by %s at %s\n",
 		req.Action, req.IssueId, req.UserEmail, req.Timestamp)
@@ -56,8 +75,16 @@ func (s *server) LogActivity(ctx context.Context, req *activitypb.ActivityReques
 		"timestamp":  req.Timestamp,
 		"logged_at":  time.Now(),
 	}
+	if req.MessageId != "" {
+		document["message_id"] = req.MessageId
+	}
+
 	_, err := s.collection.InsertOne(ctx, document)
 	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			fmt.Printf("📥 Inbox Idempotency Hit: Ignoring duplicate MessageId %s\n", req.MessageId)
+			return &activitypb.ActivityResponse{Success: true, Message: "Duplicate ignored (Idempotent Inbox)!"}, nil
+		}
 		fmt.Printf(" Failed to insert into Mongo: %v\n", err)
 		return nil, err
 	}
@@ -181,6 +208,17 @@ func main() {
 	fmt.Println("Connected to MongoDB!")
 
 	collection := client.Database("AuditDB").Collection("activity_logs")
+
+	// Transactional Inbox Idempotency: Enforce unique message_id in MongoDB
+	_, idxErr := collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "message_id", Value: 1}},
+		Options: options.Index().
+			SetUnique(true).
+			SetPartialFilterExpression(bson.M{"message_id": bson.M{"$exists": true, "$type": "string"}}),
+	})
+	if idxErr != nil {
+		log.Printf("⚠️ Failed to create unique message_id index: %v", idxErr)
+	}
 
 	redisURI := os.Getenv("REDIS_URI")
 

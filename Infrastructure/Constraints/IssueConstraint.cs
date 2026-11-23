@@ -13,5 +13,6 @@ public class IssueConstraint : IEntityTypeConfiguration<Issue>
         builder.Property(i => i.Description).IsRequired();
         builder.Property(i => i.Status).HasConversion<string>(); // Saves the enum as a string
         builder.Property(i => i.Priority).HasConversion<string>();
+        builder.Property(i => i.Version).IsConcurrencyToken();
     }
 }

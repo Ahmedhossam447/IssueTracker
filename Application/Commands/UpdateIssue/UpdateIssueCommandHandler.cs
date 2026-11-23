@@ -3,6 +3,7 @@ using IssueTracker.Core.Entities;
 using IssueTracker.Core.Interfaces;
 using IssueTracker.Application.Responses;
 using IssueTracker.Application.Interfaces;
+using IssueTracker.Application.Exceptions;
 
 namespace IssueTracker.Application.Commands.UpdateIssue;
 
@@ -28,6 +29,12 @@ public class UpdateIssueCommandHandler : IRequestHandler<UpdateIssueCommand, Res
         if (issue == null)
         {
             throw new KeyNotFoundException($"Issue with ID {request.Id} was not found.");
+        }
+
+        if (request.ExpectedVersion.HasValue && issue.Version != request.ExpectedVersion.Value)
+        {
+            throw new ConcurrencyConflictException(
+                $"Concurrency conflict: Issue {request.Id} is at Version {issue.Version}, but client expected Version {request.ExpectedVersion.Value}.");
         }
 
         issue.UpdateDetails(request.Title, request.Description, request.Priority);

@@ -28,6 +28,8 @@ type ActivityRequest struct {
 	Action        string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
 	UserEmail     string                 `protobuf:"bytes,3,opt,name=user_email,json=userEmail,proto3" json:"user_email,omitempty"`
 	Timestamp     string                 `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	MessageId     string                 `protobuf:"bytes,5,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
+	FencingToken  int64                  `protobuf:"varint,6,opt,name=fencing_token,json=fencingToken,proto3" json:"fencing_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -90,6 +92,20 @@ func (x *ActivityRequest) GetTimestamp() string {
 	return ""
 }
 
+func (x *ActivityRequest) GetMessageId() string {
+	if x != nil {
+		return x.MessageId
+	}
+	return ""
+}
+
+func (x *ActivityRequest) GetFencingToken() int64 {
+	if x != nil {
+		return x.FencingToken
+	}
+	return 0
+}
+
 // 3. The Response Payload (The data Go will return to .NET)
 type ActivityResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -147,13 +163,16 @@ var File_activity_proto protoreflect.FileDescriptor
 
 const file_activity_proto_rawDesc = "" +
 	"\n" +
-	"\x0eactivity.proto\x12\bactivity\"\x81\x01\n" +
+	"\x0eactivity.proto\x12\bactivity\"\xc5\x01\n" +
 	"\x0fActivityRequest\x12\x19\n" +
 	"\bissue_id\x18\x01 \x01(\tR\aissueId\x12\x16\n" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12\x1d\n" +
 	"\n" +
 	"user_email\x18\x03 \x01(\tR\tuserEmail\x12\x1c\n" +
-	"\ttimestamp\x18\x04 \x01(\tR\ttimestamp\"F\n" +
+	"\ttimestamp\x18\x04 \x01(\tR\ttimestamp\x12\x1d\n" +
+	"\n" +
+	"message_id\x18\x05 \x01(\tR\tmessageId\x12#\n" +
+	"\rfencing_token\x18\x06 \x01(\x03R\ffencingToken\"F\n" +
 	"\x10ActivityResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage2V\n" +
