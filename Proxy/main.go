@@ -153,11 +153,28 @@ func newBackend(rawURL string) (*proxy.Backend, error) {
 	}
 	proxyengine := httputil.NewSingleHostReverseProxy(serverURL)
 	proxyengine.Transport = otelhttp.NewTransport(http.DefaultTransport)
-	return &proxy.Backend{
+	b := &proxy.Backend{
 		URL:          serverURL,
 		Alive:        true,
 		ReverseProxy: proxyengine,
-	}, nil
+	}
+
+	// DDIA Ch. 2 & 9: Feed HTTP 5xx and transport errors into the Per-Backend Circuit Breaker
+	proxyengine.ModifyResponse = func(resp *http.Response) error {
+		if resp.StatusCode >= 500 {
+			b.RecordFailure()
+		} else {
+			b.RecordSuccess()
+		}
+		return nil
+	}
+	proxyengine.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		b.RecordFailure()
+		log.Printf("[Proxy] Backend error (%s): %v", serverURL.String(), err)
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+	}
+
+	return b, nil
 }
 
 // DDIA Ch. 10 (Coordination Service): Real-time Service Discovery via etcd Watches.

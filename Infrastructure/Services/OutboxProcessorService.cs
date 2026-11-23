@@ -123,10 +123,44 @@ public class OutboxProcessorService : BackgroundService
 
         try
         {
+            int consecutiveFailures = 0;
+            const int failureThreshold = 3;
+            const double baseDelaySeconds = 3.0;
+            const double maxBackoffSeconds = 30.0;
+
             while (!leaderCts.IsCancellationRequested)
             {
-                await ProcessOutboxBatchAsync(fencingToken, leaderCts.Token);
-                await Task.Delay(TimeSpan.FromSeconds(3), leaderCts.Token);
+                bool succeeded = await ProcessOutboxBatchAsync(fencingToken, leaderCts.Token);
+                TimeSpan delay;
+
+                if (succeeded)
+                {
+                    if (consecutiveFailures >= failureThreshold)
+                    {
+                        _logger.LogInformation("[CircuitBreaker] Outbox circuit CLOSED (NotificationService recovered).");
+                    }
+                    consecutiveFailures = 0;
+                    delay = TimeSpan.FromSeconds(baseDelaySeconds);
+                }
+                else
+                {
+                    consecutiveFailures++;
+                    if (consecutiveFailures >= failureThreshold)
+                    {
+                        double expSeconds = Math.Min(maxBackoffSeconds, baseDelaySeconds * Math.Pow(2, consecutiveFailures - failureThreshold + 1));
+                        int jitterMs = Random.Shared.Next(0, 1000);
+                        delay = TimeSpan.FromSeconds(expSeconds) + TimeSpan.FromMilliseconds(jitterMs);
+                        _logger.LogWarning(
+                            "[CircuitBreaker] Outbox circuit OPEN ({Failures} consecutive gRPC failures). Backing off for {DelayMs}ms (with jitter).",
+                            consecutiveFailures, (int)delay.TotalMilliseconds);
+                    }
+                    else
+                    {
+                        delay = TimeSpan.FromSeconds(baseDelaySeconds);
+                    }
+                }
+
+                await Task.Delay(delay, leaderCts.Token);
             }
         }
         finally
@@ -164,13 +198,14 @@ public class OutboxProcessorService : BackgroundService
         watchCts.Cancel();
     }
 
-    private async Task ProcessOutboxBatchAsync(long fencingToken, CancellationToken stoppingToken)
+    private async Task<bool> ProcessOutboxBatchAsync(long fencingToken, CancellationToken stoppingToken)
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         IOutboxRepository repo = scope.ServiceProvider.GetRequiredService<IOutboxRepository>();
         var logger = scope.ServiceProvider.GetRequiredService<ActivityLogger.ActivityLoggerClient>();
 
+        bool hadNetworkFailure = false;
         var strategy = dbContext.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(
             0,
@@ -210,6 +245,7 @@ public class OutboxProcessorService : BackgroundService
                         {
                             // Stop processing the rest of the batch on failure,
                             // but commit any earlier messages that were already acknowledged!
+                            hadNetworkFailure = true;
                             break;
                         }
 
@@ -220,10 +256,13 @@ public class OutboxProcessorService : BackgroundService
                 catch
                 {
                     await transaction.RollbackAsync(ct);
+                    hadNetworkFailure = true;
                 }
                 return true;
             },
             null,
             stoppingToken);
+
+        return !hadNetworkFailure;
     }
 }

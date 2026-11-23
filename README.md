@@ -238,6 +238,10 @@ Beyond Patroni leader election, the 3-node `etcd` Raft cluster actively coordina
   * Naive `ILIKE '%deadlock%'` (`Seq Scan`, 49,954 rows filtered): **`59.702 ms`**
   * `GIN` Inverted Index (`Bitmap Index Scan on "IX_Issues_SearchVector_GIN"`): **`0.488 ms`** (**~122x faster**)
 
+### 5. Circuit Breakers & Metastable Failure Protection
+* **Go Edge Proxy Per-Backend Circuit Breaker (`Proxy/proxy/backend.go`, `Proxy/main.go`):** Tracks HTTP `5xx` and transport failures per `.NET` replica (`Closed` $\rightarrow$ `Open` $\rightarrow$ `Half-Open`). After 3 consecutive failures, the degraded replica is skipped for 15 seconds before allowing 1 probe request.
+* **Outbox Exponential Backoff with Jitter (`OutboxProcessorService.cs`):** Trips `OPEN` after 3 consecutive gRPC failures and backs off exponentially (`6s -> 12s -> 24s -> max 30s` + random `0–1000ms` jitter). Verified live by scaling `notifications` to `0` (`6286ms -> 12583ms -> 24649ms -> 30587ms`) and recovering automatically to `CLOSED` when `notifications` + MongoDB `rs0` were restored.
+
 ---
 
 ## Infrastructure & DevOps

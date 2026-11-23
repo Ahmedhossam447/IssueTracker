@@ -10,12 +10,29 @@ import (
 	"time"
 )
 
+type CircuitState int
+
+const (
+	CircuitClosed CircuitState = iota
+	CircuitOpen
+	CircuitHalfOpen
+)
+
 type Backend struct {
-	URL          *url.URL
-	Alive        bool
-	mux          sync.RWMutex
-	ReverseProxy *httputil.ReverseProxy
+	URL              *url.URL
+	Alive            bool
+	mux              sync.RWMutex
+	ReverseProxy     *httputil.ReverseProxy
+	state            CircuitState
+	failures         int
+	openUntil        time.Time
+	halfOpenInFlight bool
 }
+
+const (
+	circuitFailureThreshold = 3
+	circuitOpenDuration     = 15 * time.Second
+)
 
 func (b *Backend) SetAlive(alive bool) {
 	b.mux.Lock()
@@ -27,6 +44,61 @@ func (b *Backend) IsAlive() bool {
 	b.mux.RLock()
 	defer b.mux.RUnlock()
 	return b.Alive
+}
+
+// AllowRequest enforces the 3-state Circuit Breaker (Closed -> Open -> Half-Open).
+func (b *Backend) AllowRequest() bool {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+
+	switch b.state {
+	case CircuitClosed:
+		return true
+	case CircuitOpen:
+		if time.Now().After(b.openUntil) {
+			b.state = CircuitHalfOpen
+			b.halfOpenInFlight = true
+			log.Printf("[CircuitBreaker] HALF-OPEN probe allowed for %s", b.URL.String())
+			return true
+		}
+		return false
+	case CircuitHalfOpen:
+		if !b.halfOpenInFlight {
+			b.halfOpenInFlight = true
+			return true
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+func (b *Backend) RecordSuccess() {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+
+	if b.state != CircuitClosed {
+		log.Printf("[CircuitBreaker] CLOSED (recovered) for %s", b.URL.String())
+	}
+	b.state = CircuitClosed
+	b.failures = 0
+	b.halfOpenInFlight = false
+}
+
+func (b *Backend) RecordFailure() {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+
+	b.failures++
+	b.halfOpenInFlight = false
+	if b.state == CircuitHalfOpen || b.failures >= circuitFailureThreshold {
+		if b.state != CircuitOpen {
+			log.Printf("[CircuitBreaker] OPENED for %s after %d consecutive failures (cooldown %s)",
+				b.URL.String(), b.failures, circuitOpenDuration)
+		}
+		b.state = CircuitOpen
+		b.openUntil = time.Now().Add(circuitOpenDuration)
+	}
 }
 
 type ServerPool struct {
@@ -52,11 +124,16 @@ func (s *ServerPool) NextIndex() int {
 }
 
 func (s *ServerPool) GetNextPeer() *Backend {
-	next := s.NextIndex()
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	if len(s.backends) == 0 {
+		return nil
+	}
+	next := int(atomic.AddUint64(&s.current, uint64(1)) % uint64(len(s.backends)))
 	l := len(s.backends) + next
 	for i := next; i < l; i++ {
 		idx := i % len(s.backends)
-		if s.backends[idx].IsAlive() {
+		if s.backends[idx].IsAlive() && s.backends[idx].AllowRequest() {
 			if i != next {
 				atomic.StoreUint64(&s.current, uint64(idx))
 			}
